@@ -6,6 +6,7 @@ Outputs results to CSV format.
 
 import json
 import torch
+import torch.nn.functional as F
 import argparse
 import time
 import re
@@ -19,6 +20,26 @@ from peft import PeftModel
 import models
 import datasets
 import random
+
+
+def pick_dtype() -> torch.dtype:
+    """Pick the appropriate dtype based on device capabilities."""
+    device = (
+        "cuda" if torch.cuda.is_available()
+        else ("mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else "cpu")
+    )
+    
+    if device == "cuda":
+        if torch.cuda.is_bf16_supported():
+            return torch.bfloat16
+        return torch.float16
+    elif device == "mps":
+        # MPS supports bfloat16 on newer Apple Silicon
+        if getattr(torch.backends, "mps", None) and hasattr(torch.backends.mps, "is_bf16_supported") and torch.backends.mps.is_bf16_supported():
+            return torch.bfloat16
+        return torch.float16
+    else:
+        return torch.float32
 
 
 class ModelEvaluator:
@@ -37,6 +58,18 @@ class ModelEvaluator:
     def _load_model(self) -> None:
         """Load the model and tokenizer."""
         
+        # Determine device and dtype
+        device = (
+            "cuda" if torch.cuda.is_available()
+            else ("mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else "cpu")
+        )
+        dtype = pick_dtype()
+        
+        # Prepare model loading kwargs
+        kwargs = dict(torch_dtype=dtype)
+        if device != "cpu":
+            kwargs["device_map"] = "auto"
+        
         # Check if model_path is a Hugging Face model ID or local path
         if self.model_path.startswith("https://huggingface.co/"):
             # Extract model ID from URL
@@ -53,17 +86,13 @@ class ModelEvaluator:
         if is_hf_model:
             print(f"Loading model from Hugging Face: {model_id}")
             
-            # Load tokenizer from Hugging Face
-            self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+            # Load tokenizer from Hugging Face with left padding for causal LMs
+            self.tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="left")
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             
             # Load model directly from Hugging Face
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                torch_dtype=torch.float16,
-                device_map="auto"
-            )
+            self.model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
             
         else:
             # Original local model loading logic
@@ -73,25 +102,22 @@ class ModelEvaluator:
             if not os.path.exists(adapter_path):
                 raise FileNotFoundError(f"Adapter path not found: {adapter_path}")
             
-            # Load tokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+            # Load tokenizer with left padding for causal LMs
+            self.tokenizer = AutoTokenizer.from_pretrained(self.base_model, padding_side="left")
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
             
             # Load base model
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.base_model, 
-                torch_dtype=torch.float16, 
-                device_map="auto"
-            )
+            self.model = AutoModelForCausalLM.from_pretrained(self.base_model, **kwargs)
             
             # Load adapter
             self.model = PeftModel.from_pretrained(self.model, adapter_path)
         
         self.model.eval()
-        print("Model loaded successfully")
+        print(f"Model loaded successfully with dtype: {dtype}")
     
     def generate_text(self, prompt: str, max_length: Optional[int] = None) -> str:
-        """Generate text using the loaded model."""
+        """Generate text using the loaded model with deterministic decoding."""
         if max_length is None:
             max_length = self.max_output_tokens
             
@@ -103,14 +129,44 @@ class ModelEvaluator:
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_length,
-                temperature=0.2,
-                top_p=1,
-                do_sample=True,
+                do_sample=False,
                 pad_token_id=self.tokenizer.eos_token_id
             )
 
         generated_output = outputs[0][input_length:]
         return self.tokenizer.decode(generated_output, skip_special_tokens=True)
+    
+    def score_safe_unsafe(self, prompt: str, candidates: Tuple[str, str] = ("safe", "unsafe")) -> Dict[str, Any]:
+        """Compute probabilities for safe vs unsafe tokens directly from logits."""
+        enc = self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
+        enc = {k: v.to(self.model.device) for k, v in enc.items()}
+        
+        with torch.no_grad():
+            logits = self.model(**enc).logits
+        
+        pad_id = self.tokenizer.pad_token_id
+        last_idx = (enc["input_ids"] != pad_id).sum(dim=1) - 1
+        last_logits = logits[0, last_idx[0], :]
+        probs = F.softmax(last_logits, dim=-1)
+        
+        # Get token IDs for candidates
+        cand_ids = {}
+        for c in candidates:
+            encoded = self.tokenizer.encode(c, add_special_tokens=False)
+            if encoded:
+                cand_ids[c] = encoded[0]
+        
+        cand_probs = {c: float(probs[cid]) for c, cid in cand_ids.items() if cid < len(probs)}
+        
+        if cand_probs:
+            total = sum(cand_probs.values())
+            if total > 0:
+                cand_probs = {k: v / total for k, v in cand_probs.items()}
+            cand_probs["pred"] = max(cand_probs, key=cand_probs.get)
+        else:
+            cand_probs["pred"] = None
+        
+        return cand_probs
 
 
 class EvaluationMetrics:
