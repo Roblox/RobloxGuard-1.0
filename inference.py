@@ -147,6 +147,7 @@ class ModelEvaluator:
                     max_new_tokens=max_length,
                     do_sample=True,
                     temperature=temperature,
+                    top_p=1,
                     pad_token_id=self.tokenizer.eos_token_id
                 )
 
