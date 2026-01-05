@@ -12,7 +12,7 @@
 
 <div align="center" style="line-height: 1;">
 <a href="https://corp.roblox.com/newsroom/2025/07/roblox-guard-advancing-safety-for-llms-with-robust-guardrails" target="_blank"><img src=https://img.shields.io/badge/Roblox-Blog-000000.svg?logo=Roblox height=22px></a>
-<a href="https://huggingface.co/papers/2512.05339" target="_blank"><img src="https://img.shields.io/badge/Paper-2512.05339-b5212f.svg?logo=arxiv" height="22px"></a><sub></sub>
+<a href="https://arxiv.org/abs/2512.05339" target="_blank"><img src="https://img.shields.io/badge/Paper-2512.05339-b5212f.svg?logo=arxiv" height="22px"></a><sub></sub>
 </div>
 <br />
 
