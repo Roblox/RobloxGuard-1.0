@@ -12,7 +12,7 @@
 
 <div align="center" style="line-height: 1;">
 <a href="https://corp.roblox.com/newsroom/2025/07/roblox-guard-advancing-safety-for-llms-with-robust-guardrails" target="_blank"><img src=https://img.shields.io/badge/Roblox-Blog-000000.svg?logo=Roblox height=22px></a>
-<img src="https://img.shields.io/badge/ArXiv-Report (coming soon)-b5212f.svg?logo=arxiv" height="22px"><sub></sub>
+<a href="https://huggingface.co/papers/2512.05339" target="_blank"><img src="https://img.shields.io/badge/Paper-2512.05339-b5212f.svg?logo=arxiv" height="22px"></a><sub></sub>
 </div>
 <br />
 
@@ -111,11 +111,10 @@ We benchmark Roblox Guard 1.0 model on a comprehensive set of open-source datase
 If you are using Roblox Guard 1.0, please cite it as:
 
 ```bibtex
-@online{RobloxGuard-1.0,
-  author       = {Mahesh Nandwana and Adam McFarlin and Nishchaie Khanna},
-  title        = {State‑of‑the‑Art LLM Helps Safeguard Unlimited Text Generation on Roblox: Roblox Guard 1.0 — Advancing Safety With Robust Guardrails},
-  year         = {2025},
-  month        = {Jul 22},
-  howpublished = {\url{https://corp.roblox.com/newsroom/2025/07/roblox-guard-advancing-safety-for-llms-with-robust-guardrails}},
+@article{nandwana2025taxonomy,
+  title={Taxonomy-Adaptive Moderation Model with Robust Guardrails for Large Language Models},
+  author={Nandwana, Mahesh Kumar and Lim, Youngwan and Liu, Joseph and Yang, Alex and Notibala, Varun and Khanna, Nishchaie},
+  journal={arXiv preprint arXiv:2512.05339},
+  year={2025}
 }
 
